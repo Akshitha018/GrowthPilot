@@ -29,7 +29,6 @@ build/
 *.egg-info/
 
 # Generated data
-*.csv
 *.xlsx
 
 # Logs
@@ -39,6 +38,3 @@ build/
 .DS_Store
 Thumbs.db
 
-.env
-__pycache__/
-*.pyc

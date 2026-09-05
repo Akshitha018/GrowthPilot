@@ -1,10 +1,10 @@
-from uuid import uuid4
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.database import get_db
-from app.models.experiment import ExperimentResult
+from app.models.experiment import Experiment, ExperimentAssignment
+from app.models.transaction import Transaction
 
 
 router = APIRouter(
@@ -14,38 +14,7 @@ router = APIRouter(
 
 
 # ============================================================
-# ADD EXPERIMENT RESULT
-# ============================================================
-
-@router.post("/{experiment_id}/results")
-def create_result(
-    experiment_id: str,
-    customer_id: str,
-    metric: str,
-    value: float,
-    db: Session = Depends(get_db)
-):
-
-    result = ExperimentResult(
-        result_id=str(uuid4()),
-        experiment_id=experiment_id,
-        customer_id=customer_id,
-        metric=metric,
-        value=value
-    )
-
-    db.add(result)
-    db.commit()
-    db.refresh(result)
-
-    return {
-        "message": "Experiment result saved successfully",
-        "result": result
-    }
-
-
-# ============================================================
-# GET RESULTS FOR EXPERIMENT
+# GET AUTOMATIC EXPERIMENT RESULTS
 # ============================================================
 
 @router.get("/{experiment_id}/results")
@@ -54,10 +23,55 @@ def get_results(
     db: Session = Depends(get_db)
 ):
 
-    results = db.query(
-        ExperimentResult
-    ).filter(
-        ExperimentResult.experiment_id == experiment_id
-    ).all()
+    # Check experiment exists
+    experiment = db.query(Experiment).filter(
+        Experiment.experiment_id == experiment_id
+    ).first()
 
-    return results
+    if not experiment:
+        raise HTTPException(
+            status_code=404,
+            detail="Experiment not found"
+        )
+
+    # Calculate results for each group
+    results = (
+        db.query(
+            ExperimentAssignment.group.label("group"),
+            func.count(
+                Transaction.transaction_id
+            ).label("transactions"),
+            func.coalesce(
+                func.sum(Transaction.revenue),
+                0
+            ).label("revenue")
+        )
+        .join(
+            Transaction,
+            Transaction.customer_id ==
+            ExperimentAssignment.customer_id
+        )
+        .filter(
+            ExperimentAssignment.experiment_id ==
+            experiment_id
+        )
+        .group_by(
+            ExperimentAssignment.group
+        )
+        .all()
+    )
+
+    response = []
+
+    for result in results:
+
+        response.append({
+            "group": result.group,
+            "transactions": result.transactions,
+            "revenue": float(result.revenue)
+        })
+
+    return {
+        "experiment_id": experiment_id,
+        "results": response
+    }
