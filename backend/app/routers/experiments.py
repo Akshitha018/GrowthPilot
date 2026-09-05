@@ -14,6 +14,7 @@ from app.models.experiment import (
 
 from app.models.customer import Customer
 from app.models.ai_action import AIAction
+from app.models.transaction import Transaction
 
 from app.services.decision_engine import make_growth_decision
 from app.services.ai_growth_agent import generate_growth_recommendation
@@ -72,10 +73,6 @@ def create_experiment(
     db: Session = Depends(get_db)
 ):
 
-    # --------------------------------------------------------
-    # Validate required fields
-    # --------------------------------------------------------
-
     required_fields = [
         "experiment_id",
         "name"
@@ -90,11 +87,6 @@ def create_experiment(
                 detail=f"{field} is required"
             )
 
-
-    # --------------------------------------------------------
-    # Check duplicate experiment ID
-    # --------------------------------------------------------
-
     existing_experiment = db.query(
         Experiment
     ).filter(
@@ -108,11 +100,6 @@ def create_experiment(
             status_code=400,
             detail="Experiment ID already exists"
         )
-
-
-    # --------------------------------------------------------
-    # Create experiment
-    # --------------------------------------------------------
 
     new_experiment = Experiment(
         experiment_id=experiment["experiment_id"],
@@ -142,11 +129,6 @@ def create_experiment(
         )
     )
 
-
-    # --------------------------------------------------------
-    # Save experiment
-    # --------------------------------------------------------
-
     try:
 
         db.add(new_experiment)
@@ -163,7 +145,6 @@ def create_experiment(
             status_code=500,
             detail=f"Failed to create experiment: {str(e)}"
         )
-
 
     return new_experiment
 
@@ -190,7 +171,6 @@ def update_experiment_status(
             detail="Experiment not found"
         )
 
-
     allowed_statuses = [
         "DRAFT",
         "ACTIVE",
@@ -199,7 +179,6 @@ def update_experiment_status(
     ]
 
     status = status.strip().upper()
-
 
     if status not in allowed_statuses:
 
@@ -212,9 +191,7 @@ def update_experiment_status(
             )
         )
 
-
     experiment.status = status
-
 
     try:
 
@@ -230,7 +207,6 @@ def update_experiment_status(
             status_code=500,
             detail=f"Failed to update experiment status: {str(e)}"
         )
-
 
     return {
         "message": "Experiment status updated",
@@ -259,7 +235,6 @@ def activate_experiment(
             detail="Experiment not found"
         )
 
-
     if experiment.status == "ACTIVE":
 
         return {
@@ -267,7 +242,6 @@ def activate_experiment(
             "experiment_id": experiment_id,
             "status": experiment.status
         }
-
 
     if experiment.status != "DRAFT":
 
@@ -280,9 +254,7 @@ def activate_experiment(
             )
         )
 
-
     experiment.status = "ACTIVE"
-
 
     try:
 
@@ -298,7 +270,6 @@ def activate_experiment(
             status_code=500,
             detail=f"Failed to activate experiment: {str(e)}"
         )
-
 
     return {
         "message": "Experiment activated successfully",
@@ -328,7 +299,6 @@ def complete_experiment(
             detail="Experiment not found"
         )
 
-
     if experiment.status == "COMPLETED":
 
         return {
@@ -336,7 +306,6 @@ def complete_experiment(
             "experiment_id": experiment_id,
             "status": experiment.status
         }
-
 
     if experiment.status != "ACTIVE":
 
@@ -350,14 +319,12 @@ def complete_experiment(
             )
         )
 
-
     results = db.query(
         ExperimentResult
     ).filter(
         ExperimentResult.experiment_id ==
         experiment_id
     ).all()
-
 
     if not results:
 
@@ -366,9 +333,7 @@ def complete_experiment(
             detail="Cannot complete experiment without results"
         )
 
-
     experiment.status = "COMPLETED"
-
 
     try:
 
@@ -385,10 +350,9 @@ def complete_experiment(
             detail=f"Failed to complete experiment: {str(e)}"
         )
 
-
     return {
         "message": "Experiment completed successfully",
-        "experiment_id": experiment.experiment_id,
+        "experiment_id": experiment_id,
         "status": experiment.status
     }
 
@@ -414,7 +378,6 @@ def select_winner(
             detail="Experiment not found"
         )
 
-
     if experiment.status == "WINNER_SELECTED":
 
         return {
@@ -423,7 +386,6 @@ def select_winner(
             "winner": experiment.winner,
             "status": experiment.status
         }
-
 
     if experiment.status != "COMPLETED":
 
@@ -436,14 +398,12 @@ def select_winner(
             )
         )
 
-
     assignments = db.query(
         ExperimentAssignment
     ).filter(
         ExperimentAssignment.experiment_id ==
         experiment_id
     ).all()
-
 
     results = db.query(
         ExperimentResult
@@ -452,14 +412,12 @@ def select_winner(
         experiment_id
     ).all()
 
-
     if not assignments:
 
         raise HTTPException(
             status_code=400,
             detail="No customer assignments found"
         )
-
 
     if not results:
 
@@ -468,9 +426,7 @@ def select_winner(
             detail="No experiment results found"
         )
 
-
     groups = {}
-
 
     for assignment in assignments:
 
@@ -486,7 +442,6 @@ def select_winner(
 
         groups[group]["customers"] += 1
 
-
     for result in results:
 
         assignment = db.query(
@@ -498,7 +453,6 @@ def select_winner(
             result.customer_id
         ).first()
 
-
         if assignment and result.metric == "conversion":
 
             group = assignment.group
@@ -507,13 +461,11 @@ def select_winner(
 
                 groups[group]["conversions"] += 1
 
-
     for group in groups:
 
         customers = groups[group]["customers"]
 
         conversions = groups[group]["conversions"]
-
 
         if customers > 0:
 
@@ -521,18 +473,15 @@ def select_winner(
                 conversions / customers
             ) * 100
 
-
     winner = max(
         groups,
         key=lambda group:
         groups[group]["conversion_rate"]
     )
 
-
     experiment.winner = winner
 
     experiment.status = "WINNER_SELECTED"
-
 
     try:
 
@@ -548,7 +497,6 @@ def select_winner(
             status_code=500,
             detail=f"Failed to select winner: {str(e)}"
         )
-
 
     return {
         "message": "Winner selected successfully",
@@ -580,14 +528,12 @@ def get_assignments(
             detail="Experiment not found"
         )
 
-
     assignments = db.query(
         ExperimentAssignment
     ).filter(
         ExperimentAssignment.experiment_id ==
         experiment_id
     ).all()
-
 
     return assignments
 
@@ -613,9 +559,7 @@ def assign_customers(
             detail="Experiment not found"
         )
 
-
     customers = db.query(Customer).all()
-
 
     if not customers:
 
@@ -624,9 +568,7 @@ def assign_customers(
             detail="No customers found"
         )
 
-
     assignments = []
-
 
     for customer in customers:
 
@@ -639,11 +581,9 @@ def assign_customers(
             customer.customer_id
         ).first()
 
-
         if existing_assignment:
 
             continue
-
 
         group = random.choice([
             "CONTROL",
@@ -651,22 +591,18 @@ def assign_customers(
             "VARIANT_B"
         ])
 
-
         assignment = ExperimentAssignment(
             experiment_id=experiment_id,
             customer_id=customer.customer_id,
             group=group
         )
 
-
         db.add(assignment)
-
 
         assignments.append({
             "customer_id": customer.customer_id,
             "group": group
         })
-
 
     if not assignments:
 
@@ -675,7 +611,6 @@ def assign_customers(
             "experiment_id": experiment_id,
             "assignments": []
         }
-
 
     try:
 
@@ -689,7 +624,6 @@ def assign_customers(
             status_code=500,
             detail=f"Failed to assign customers: {str(e)}"
         )
-
 
     return {
         "message": "Customers assigned successfully",
@@ -722,7 +656,6 @@ def record_result(
             detail="Experiment not found"
         )
 
-
     assignment = db.query(
         ExperimentAssignment
     ).filter(
@@ -732,7 +665,6 @@ def record_result(
         customer_id
     ).first()
 
-
     if not assignment:
 
         raise HTTPException(
@@ -740,14 +672,11 @@ def record_result(
             detail="Customer is not assigned to this experiment"
         )
 
-
     metric = metric.strip().lower()
-
 
     allowed_metrics = [
         "conversion"
     ]
-
 
     if metric not in allowed_metrics:
 
@@ -760,7 +689,6 @@ def record_result(
             )
         )
 
-
     if value < 0:
 
         raise HTTPException(
@@ -768,14 +696,12 @@ def record_result(
             detail="Result value cannot be negative"
         )
 
-
     if metric == "conversion" and value not in [0, 1]:
 
         raise HTTPException(
             status_code=400,
             detail="Conversion value must be either 0 or 1"
         )
-
 
     result = ExperimentResult(
         result_id=str(uuid4()),
@@ -785,7 +711,6 @@ def record_result(
         value=value,
         created_at=datetime.utcnow()
     )
-
 
     try:
 
@@ -803,7 +728,6 @@ def record_result(
             status_code=500,
             detail=f"Failed to save experiment result: {str(e)}"
         )
-
 
     return {
         "message": "Experiment result recorded",
@@ -837,7 +761,6 @@ def get_results(
             detail="Experiment not found"
         )
 
-
     results = db.query(
         ExperimentResult
     ).filter(
@@ -845,8 +768,103 @@ def get_results(
         experiment_id
     ).all()
 
-
     return results
+
+
+# ============================================================
+# GENERATE EXPERIMENT RESULTS FROM TRANSACTIONS
+# ============================================================
+
+@router.post("/{experiment_id}/generate-results")
+def generate_experiment_results(
+    experiment_id: str,
+    db: Session = Depends(get_db)
+):
+
+    experiment = db.query(Experiment).filter(
+        Experiment.experiment_id == experiment_id
+    ).first()
+
+    if not experiment:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Experiment not found"
+        )
+
+    assignments = db.query(
+        ExperimentAssignment
+    ).filter(
+        ExperimentAssignment.experiment_id ==
+        experiment_id
+    ).all()
+
+    if not assignments:
+
+        raise HTTPException(
+            status_code=404,
+            detail="No customers assigned to this experiment"
+        )
+
+    created_results = 0
+
+    for assignment in assignments:
+
+        transaction = db.query(
+            Transaction
+        ).filter(
+            Transaction.customer_id ==
+            assignment.customer_id
+        ).first()
+
+        conversion_value = 1 if transaction else 0
+
+        existing_result = db.query(
+            ExperimentResult
+        ).filter(
+            ExperimentResult.experiment_id ==
+            experiment_id,
+            ExperimentResult.customer_id ==
+            assignment.customer_id,
+            ExperimentResult.metric ==
+            "conversion"
+        ).first()
+
+        if existing_result:
+
+            continue
+
+        result = ExperimentResult(
+            result_id=str(uuid4()),
+            experiment_id=experiment_id,
+            customer_id=assignment.customer_id,
+            metric="conversion",
+            value=conversion_value,
+            created_at=datetime.utcnow()
+        )
+
+        db.add(result)
+
+        created_results += 1
+
+    try:
+
+        db.commit()
+
+    except Exception as e:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate results: {str(e)}"
+        )
+
+    return {
+        "message": "Experiment results generated successfully",
+        "experiment_id": experiment_id,
+        "results_created": created_results
+    }
 
 
 # ============================================================
@@ -870,14 +888,12 @@ def analyze_experiment(
             detail="Experiment not found"
         )
 
-
     assignments = db.query(
         ExperimentAssignment
     ).filter(
         ExperimentAssignment.experiment_id ==
         experiment_id
     ).all()
-
 
     if not assignments:
 
@@ -886,9 +902,7 @@ def analyze_experiment(
             detail="No customers assigned to this experiment"
         )
 
-
     groups = {}
-
 
     for assignment in assignments:
 
@@ -901,11 +915,9 @@ def analyze_experiment(
                 "conversions": 0
             }
 
-
         groups[group]["customers"].append(
             assignment.customer_id
         )
-
 
     results = db.query(
         ExperimentResult
@@ -916,16 +928,13 @@ def analyze_experiment(
         "conversion"
     ).all()
 
-
     for result in results:
 
         if result.value <= 0:
 
             continue
 
-
         customer_id = result.customer_id
-
 
         for group_name, group_data in groups.items():
 
@@ -935,7 +944,6 @@ def analyze_experiment(
 
                 break
 
-
     for group_name, group_data in groups.items():
 
         total_customers = len(
@@ -943,7 +951,6 @@ def analyze_experiment(
         )
 
         conversions = group_data["conversions"]
-
 
         if total_customers > 0:
 
@@ -955,19 +962,16 @@ def analyze_experiment(
 
             conversion_rate = 0
 
-
         group_data["conversion_rate"] = round(
             conversion_rate,
             2
         )
-
 
     winner = max(
         groups,
         key=lambda group:
         groups[group]["conversion_rate"]
     )
-
 
     control_rate = groups.get(
         "CONTROL",
@@ -977,9 +981,7 @@ def analyze_experiment(
         0
     )
 
-
     winner_rate = groups[winner]["conversion_rate"]
-
 
     if control_rate > 0:
 
@@ -991,7 +993,6 @@ def analyze_experiment(
     else:
 
         improvement = 0
-
 
     return {
         "experiment_id": experiment_id,
@@ -1018,14 +1019,12 @@ def get_growth_decision(
         Experiment.experiment_id == experiment_id
     ).first()
 
-
     if not experiment:
 
         raise HTTPException(
             status_code=404,
             detail="Experiment not found"
         )
-
 
     assignments = db.query(
         ExperimentAssignment
@@ -1034,14 +1033,12 @@ def get_growth_decision(
         experiment_id
     ).all()
 
-
     if not assignments:
 
         raise HTTPException(
             status_code=404,
             detail="No customers assigned"
         )
-
 
     results = db.query(
         ExperimentResult
@@ -1052,9 +1049,7 @@ def get_growth_decision(
         "conversion"
     ).all()
 
-
     groups = {}
-
 
     for assignment in assignments:
 
@@ -1065,20 +1060,17 @@ def get_growth_decision(
                 "conversions": 0
             }
 
-
         groups[
             assignment.group
         ]["customers"].append(
             assignment.customer_id
         )
 
-
     for result in results:
 
         if result.value <= 0:
 
             continue
-
 
         for group_name, group in groups.items():
 
@@ -1088,11 +1080,9 @@ def get_growth_decision(
 
                 break
 
-
     for group_name, group in groups.items():
 
         total = len(group["customers"])
-
 
         if total > 0:
 
@@ -1105,13 +1095,11 @@ def get_growth_decision(
 
             group["conversion_rate"] = 0
 
-
     winner = max(
         groups,
         key=lambda g:
         groups[g]["conversion_rate"]
     )
-
 
     control_rate = groups.get(
         "CONTROL",
@@ -1121,9 +1109,7 @@ def get_growth_decision(
         0
     )
 
-
     winner_rate = groups[winner]["conversion_rate"]
-
 
     if control_rate > 0:
 
@@ -1136,7 +1122,6 @@ def get_growth_decision(
 
         improvement = 0
 
-
     analysis = {
         "experiment_id": experiment_id,
         "groups": groups,
@@ -1147,11 +1132,9 @@ def get_growth_decision(
         )
     }
 
-
     decision = make_growth_decision(
         analysis
     )
-
 
     return {
         "experiment": experiment.name,
@@ -1178,14 +1161,12 @@ def get_ai_recommendation(
         Experiment.experiment_id == experiment_id
     ).first()
 
-
     if not experiment:
 
         raise HTTPException(
             status_code=404,
             detail="Experiment not found"
         )
-
 
     # --------------------------------------------------------
     # Get assignments
@@ -1198,14 +1179,12 @@ def get_ai_recommendation(
         experiment_id
     ).all()
 
-
     if not assignments:
 
         raise HTTPException(
             status_code=404,
             detail="No customers assigned"
         )
-
 
     # --------------------------------------------------------
     # Get conversion results
@@ -1220,18 +1199,15 @@ def get_ai_recommendation(
         "conversion"
     ).all()
 
-
     # --------------------------------------------------------
     # Build groups
     # --------------------------------------------------------
 
     groups = {}
 
-
     for assignment in assignments:
 
         group_name = assignment.group
-
 
         if group_name not in groups:
 
@@ -1240,11 +1216,9 @@ def get_ai_recommendation(
                 "conversions": 0
             }
 
-
         groups[group_name]["customers"].append(
             assignment.customer_id
         )
-
 
     # --------------------------------------------------------
     # Count conversions
@@ -1256,7 +1230,6 @@ def get_ai_recommendation(
 
             continue
 
-
         for group_name, group in groups.items():
 
             if result.customer_id in group["customers"]:
@@ -1264,7 +1237,6 @@ def get_ai_recommendation(
                 group["conversions"] += 1
 
                 break
-
 
     # --------------------------------------------------------
     # Calculate conversion rates
@@ -1278,7 +1250,6 @@ def get_ai_recommendation(
 
         conversions = group["conversions"]
 
-
         if total_customers > 0:
 
             group["conversion_rate"] = round(
@@ -1290,7 +1261,6 @@ def get_ai_recommendation(
 
             group["conversion_rate"] = 0
 
-
     # --------------------------------------------------------
     # Find winner
     # --------------------------------------------------------
@@ -1300,7 +1270,6 @@ def get_ai_recommendation(
         key=lambda group:
         groups[group]["conversion_rate"]
     )
-
 
     # --------------------------------------------------------
     # Compare with control
@@ -1314,9 +1283,7 @@ def get_ai_recommendation(
         0
     )
 
-
     winner_rate = groups[winner]["conversion_rate"]
-
 
     if control_rate > 0:
 
@@ -1328,7 +1295,6 @@ def get_ai_recommendation(
     else:
 
         improvement = 0
-
 
     # --------------------------------------------------------
     # Build analysis
@@ -1344,7 +1310,6 @@ def get_ai_recommendation(
         )
     }
 
-
     # --------------------------------------------------------
     # Rule-based decision
     # --------------------------------------------------------
@@ -1352,7 +1317,6 @@ def get_ai_recommendation(
     decision = make_growth_decision(
         analysis
     )
-
 
     # --------------------------------------------------------
     # Generate AI recommendation
@@ -1369,13 +1333,35 @@ def get_ai_recommendation(
 
     except Exception as e:
 
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Failed to generate AI recommendation: {str(e)}"
-            )
-        )
+        error_message = str(e)
 
+        # Handle Gemini/API quota errors gracefully
+        if (
+            "429" in error_message
+            or "quota" in error_message.lower()
+        ):
+
+            recommendation = {
+                "recommendation": (
+                    "AI recommendation temporarily unavailable."
+                ),
+                "reason": (
+                    "The AI provider quota has been exceeded. "
+                    "The experiment analysis and rule-based "
+                    "decision are still available."
+                ),
+                "status": "QUOTA_EXCEEDED"
+            }
+
+        else:
+
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Failed to generate AI recommendation: "
+                    f"{error_message}"
+                )
+            )
 
     # ========================================================
     # CREATE AI GROWTH ACTION
@@ -1392,14 +1378,12 @@ def get_ai_recommendation(
         AIAction.status != "REJECTED"
     ).first()
 
-
     # --------------------------------------------------------
     # Create action only if one does not already exist
     # --------------------------------------------------------
 
     if not existing_action:
 
-        # Handle recommendation safely
         if isinstance(recommendation, dict):
 
             description = recommendation.get(
@@ -1423,7 +1407,6 @@ def get_ai_recommendation(
                 "experiment performance."
             )
 
-
         ai_action = AIAction(
             experiment_id=experiment_id,
             action_type="GROWTH_OPTIMIZATION",
@@ -1436,7 +1419,6 @@ def get_ai_recommendation(
             status="PROPOSED",
             created_at=datetime.utcnow()
         )
-
 
         try:
 
@@ -1461,7 +1443,6 @@ def get_ai_recommendation(
 
         ai_action = existing_action
 
-
     # ========================================================
     # FINAL RESPONSE
     # ========================================================
@@ -1472,97 +1453,4 @@ def get_ai_recommendation(
         "decision": decision,
         "ai_recommendation": recommendation,
         "ai_action": ai_action
-    }
-# ============================================================
-# GENERATE EXPERIMENT RESULTS FROM TRANSACTIONS
-# ============================================================
-
-from app.models.transaction import Transaction
-
-
-@router.post("/{experiment_id}/generate-results")
-def generate_experiment_results(
-    experiment_id: str,
-    db: Session = Depends(get_db)
-):
-
-    # Check experiment
-    experiment = db.query(Experiment).filter(
-        Experiment.experiment_id == experiment_id
-    ).first()
-
-    if not experiment:
-        raise HTTPException(
-            status_code=404,
-            detail="Experiment not found"
-        )
-
-    # Get assignments
-    assignments = db.query(
-        ExperimentAssignment
-    ).filter(
-        ExperimentAssignment.experiment_id == experiment_id
-    ).all()
-
-    if not assignments:
-        raise HTTPException(
-            status_code=404,
-            detail="No customers assigned to this experiment"
-        )
-
-    created_results = 0
-
-    for assignment in assignments:
-
-        # Check whether this customer made a transaction
-        transaction = db.query(
-            Transaction
-        ).filter(
-            Transaction.customer_id ==
-            assignment.customer_id
-        ).first()
-
-        # Customer converted if they have a transaction
-        conversion_value = 1 if transaction else 0
-
-        # Avoid duplicate conversion result
-        existing_result = db.query(
-            ExperimentResult
-        ).filter(
-            ExperimentResult.experiment_id == experiment_id,
-            ExperimentResult.customer_id == assignment.customer_id,
-            ExperimentResult.metric == "conversion"
-        ).first()
-
-        if existing_result:
-            continue
-
-        result = ExperimentResult(
-            result_id=str(uuid4()),
-            experiment_id=experiment_id,
-            customer_id=assignment.customer_id,
-            metric="conversion",
-            value=conversion_value,
-            created_at=datetime.utcnow()
-        )
-
-        db.add(result)
-        created_results += 1
-
-    try:
-        db.commit()
-
-    except Exception as e:
-
-        db.rollback()
-
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate results: {str(e)}"
-        )
-
-    return {
-        "message": "Experiment results generated successfully",
-        "experiment_id": experiment_id,
-        "results_created": created_results
     }
