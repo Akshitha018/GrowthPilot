@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import "./index.css";
 
-const API_URL = "https://growthpilot-backend-50ms.onrender.com/";
+const API_URL = "https://growthpilot-backend-50ms.onrender.com";
 
 function App() {
   const [goal, setGoal] = useState("");
