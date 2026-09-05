@@ -122,6 +122,7 @@ def auto_assign_customers(
     # Get all customers
     customers = db.query(Customer).all()
 
+
     if not customers:
         raise HTTPException(
             status_code=404,
