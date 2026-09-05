@@ -39,7 +39,7 @@ app.add_middleware(
     CORSMiddleware,
 
     allow_origins=[
-       " https://growthpilot-frontend.onrender.com/"
+       "https://growthpilot-frontend.onrender.com"
     ],
 
     allow_credentials=True,
