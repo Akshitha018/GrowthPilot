@@ -35,9 +35,6 @@ function App() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const [results, setResults] = useState([]);
-  const [resultLoading, setResultLoading] = useState(false);
-
   const [runLoading, setRunLoading] = useState(false);
   const [runResult, setRunResult] = useState(null);
 
@@ -63,23 +60,24 @@ function App() {
   };
 
   // ============================================================
-  // LOAD CUSTOMERS
+  // LOAD ONLY 100 CUSTOMERS
   // ============================================================
 
   const loadCustomers = async () => {
-  try {
-    const response = await axios.get(
-      `${API_URL}/customers/?skip=0&limit=100`
-    );
+    try {
+      const response = await axios.get(
+        `${API_URL}/customers/?skip=0&limit=100`
+      );
 
-    setCustomers(response.data);
-  } catch (err) {
-    console.error(
-      "Failed to load customers:",
-      err
-    );
-  }
-};
+      setCustomers(response.data.slice(0, 100));
+    } catch (err) {
+      console.error(
+        "Failed to load customers:",
+        err
+      );
+    }
+  };
+
   // ============================================================
   // LOAD AI ACTIONS
   // ============================================================
@@ -130,6 +128,9 @@ function App() {
     setError("");
     setMessage("");
     setExperiment(null);
+    setAssignments([]);
+    setAnalysis(null);
+    setRunResult(null);
 
     try {
       const response = await axios.post(
@@ -150,12 +151,13 @@ function App() {
 
       setExperiment(response.data);
 
-      // Automatically select the newly generated experiment
       if (response.data.experiment_id) {
         setSelectedExperiment(
           response.data.experiment_id
         );
-      } else if (response.data.experiment?.experiment_id) {
+      } else if (
+        response.data.experiment?.experiment_id
+      ) {
         setSelectedExperiment(
           response.data.experiment.experiment_id
         );
@@ -309,7 +311,6 @@ function App() {
         updatedExperiment.data
       );
 
-      // Refresh analysis
       await runAnalysis();
     } catch (err) {
       console.error(
@@ -335,9 +336,9 @@ function App() {
 
     setExperiment(null);
     setAssignments([]);
-    setResults([]);
     setAnalysis(null);
     setAiRecommendation(null);
+    setRunResult(null);
 
     setError("");
     setMessage("");
@@ -359,12 +360,41 @@ function App() {
       setExperiment(
         response.data
       );
-      setSelectedExperiment(experimentId);
-      const assignmentsResponse = await axios.get(
-  `${API_URL}/experiment-assignments/${experimentId}`
-);
 
-setAssignments(assignmentsResponse.data);
+      // ========================================================
+      // LOAD ASSIGNMENTS FOR THIS EXPERIMENT
+      // ONLY KEEP FIRST 100 IN FRONTEND
+      // ========================================================
+
+      try {
+        const assignmentsResponse =
+          await axios.get(
+            `${API_URL}/experiment-assignments/${experimentId}`
+          );
+
+        const limitedAssignments =
+          Array.isArray(
+            assignmentsResponse.data
+          )
+            ? assignmentsResponse.data.slice(
+                0,
+                100
+              )
+            : [];
+
+        setAssignments(
+          limitedAssignments
+        );
+
+      } catch (assignmentError) {
+        console.error(
+          "Failed to load assignments:",
+          assignmentError
+        );
+
+        setAssignments([]);
+      }
+
     } catch (err) {
       console.error(
         "Failed to load selected experiment:",
@@ -379,146 +409,10 @@ setAssignments(assignmentsResponse.data);
   };
 
   // ============================================================
-  // ASSIGN CUSTOMERS
+  // ASSIGN 100 CUSTOMERS
   // ============================================================
 
   const assignCustomers = async () => {
-  if (!selectedExperiment) {
-    setError("Please select an experiment.");
-    return;
-  }
-
-  setAssignmentLoading(true);
-  setError("");
-  setMessage("");
-
-  try {
-    const response = await axios.post(
-      `${API_URL}/experiment-assignments/auto/${selectedExperiment}`
-    );
-
-    console.log(
-      "Automatic assignment:",
-      response.data
-    );
-
-    setMessage(
-      response.data.message ||
-        "Customers assigned successfully!"
-    );
-
-    // Load the assignments created for this experiment
-    const assignmentsResponse = await axios.get(
-      `${API_URL}/experiment-assignments/${selectedExperiment}`
-    );
-
-    setAssignments(
-      assignmentsResponse.data
-    );
-
-  } catch (err) {
-    console.error(
-      "Assignment error:",
-      err
-    );
-
-    console.error(
-      "Backend response:",
-      err.response?.data
-    );
-
-    setError(
-      err.response?.data?.detail ||
-        "Unable to assign customers."
-    );
-
-  } finally {
-    setAssignmentLoading(false);
-  }
-};
-
-const runExperiment = async () => {
-  if (!selectedExperiment) {
-    setError("Please select an experiment.");
-    return;
-  }
-
-  if (assignments.length === 0) {
-    setError("Please assign customers first.");
-    return;
-  }
-
-  setRunLoading(true);
-  setError("");
-  setMessage("");
-  setRunResult(null);
-
-  try {
-    const response = await axios.post(
-      `${API_URL}/experiments/${selectedExperiment}/run`
-    );
-
-    console.log("Run experiment response:", response.data);
-
-    setRunResult(response.data);
-
-    setMessage(
-      `Experiment completed successfully! Winner: ${response.data.winner}`
-    );
-
-    setExperiment((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: response.data.status,
-            winner: response.data.winner
-          }
-        : prev
-    );
-
-    await loadExperiments();
-
-  } catch (err) {
-    console.error("Run experiment error:", err);
-    console.error("Backend response:", err.response?.data);
-
-    setError(
-      err.response?.data?.detail ||
-      "Unable to run experiment."
-    );
-
-  } finally {
-    setRunLoading(false);
-  }
-};
-  // ============================================================
-  // PREPARE RESULTS
-  // ============================================================
-
-  const prepareResults = () => {
-    const initialResults =
-      assignments.map(
-        (assignment) => ({
-          customer_id:
-            assignment.customer_id,
-
-          group:
-            assignment.group,
-
-          value: 0
-        })
-      );
-
-    setResults(
-      initialResults
-    );
-  };
-
-  // ============================================================
-  // SAVE RESULTS
-  // ============================================================
-
-  const saveResults = async () => {
     if (!selectedExperiment) {
       setError(
         "Please select an experiment."
@@ -526,38 +420,53 @@ const runExperiment = async () => {
       return;
     }
 
-    setResultLoading(true);
+    setAssignmentLoading(true);
     setError("");
     setMessage("");
+    setRunResult(null);
 
     try {
-      for (
-        const result of results
-      ) {
-        await axios.post(
-          `${API_URL}/experiments/${selectedExperiment}/results`,
-          null,
-          {
-            params: {
-              customer_id:
-                result.customer_id,
+      const response = await axios.post(
+        `${API_URL}/experiment-assignments/auto/${selectedExperiment}`
+      );
 
-              metric:
-                "conversion",
-
-              value:
-                Number(result.value)
-            }
-          }
-        );
-      }
+      console.log(
+        "Automatic assignment:",
+        response.data
+      );
 
       setMessage(
-        "Experiment results saved successfully!"
+        response.data.message ||
+          "Customers assigned successfully!"
       );
+
+      // ========================================================
+      // LOAD ASSIGNMENTS
+      // ONLY DISPLAY MAXIMUM 100
+      // ========================================================
+
+      const assignmentsResponse =
+        await axios.get(
+          `${API_URL}/experiment-assignments/${selectedExperiment}`
+        );
+
+      const limitedAssignments =
+        Array.isArray(
+          assignmentsResponse.data
+        )
+          ? assignmentsResponse.data.slice(
+              0,
+              100
+            )
+          : [];
+
+      setAssignments(
+        limitedAssignments
+      );
+
     } catch (err) {
       console.error(
-        "Result error:",
+        "Assignment error:",
         err
       );
 
@@ -568,10 +477,94 @@ const runExperiment = async () => {
 
       setError(
         err.response?.data?.detail ||
-          "Unable to save experiment results."
+          "Unable to assign customers."
       );
+
     } finally {
-      setResultLoading(false);
+      setAssignmentLoading(false);
+    }
+  };
+
+  // ============================================================
+  // RUN EXPERIMENT
+  // ============================================================
+
+  const runExperiment = async () => {
+    if (!selectedExperiment) {
+      setError(
+        "Please select an experiment."
+      );
+      return;
+    }
+
+    if (assignments.length === 0) {
+      setError(
+        "Please assign customers first."
+      );
+      return;
+    }
+
+    setRunLoading(true);
+    setError("");
+    setMessage("");
+    setRunResult(null);
+
+    try {
+      const response = await axios.post(
+        `${API_URL}/experiments/${selectedExperiment}/run`
+      );
+
+      console.log(
+        "Run experiment response:",
+        response.data
+      );
+
+      setRunResult(
+        response.data
+      );
+
+      setMessage(
+        `Experiment completed successfully! Winner: ${response.data.winner}`
+      );
+
+      setExperiment(
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                status:
+                  response.data.status,
+                winner:
+                  response.data.winner
+              }
+            : prev
+      );
+
+      await loadExperiments();
+
+      // Refresh analysis after running
+      await analyzeExperiment(
+        selectedExperiment
+      );
+
+    } catch (err) {
+      console.error(
+        "Run experiment error:",
+        err
+      );
+
+      console.error(
+        "Backend response:",
+        err.response?.data
+      );
+
+      setError(
+        err.response?.data?.detail ||
+          "Unable to run experiment."
+      );
+
+    } finally {
+      setRunLoading(false);
     }
   };
 
@@ -579,70 +572,64 @@ const runExperiment = async () => {
   // ANALYZE EXPERIMENT
   // ============================================================
 
-const analyzeExperiment = async (experimentId) => {
-  if (!experimentId) {
-    return;
-  }
+  const analyzeExperiment = async (
+    experimentId
+  ) => {
+    if (!experimentId) {
+      return;
+    }
 
-  setAnalysisLoading(true);
-  setError("");
+    setAnalysisLoading(true);
+    setError("");
 
-  try {
-    const response = await axios.get(
-      `${API_URL}/experiments/${experimentId}/analysis`
-    );
+    try {
+      const response = await axios.get(
+        `${API_URL}/experiments/${experimentId}/analysis`
+      );
 
-    setAnalysis(response.data);
+      console.log(
+        "Analysis:",
+        response.data
+      );
 
-  } catch (error) {
-    console.error("Analysis error:", error);
+      setAnalysis(
+        response.data
+      );
 
-    setAnalysis(null);
+    } catch (error) {
+      console.error(
+        "Analysis error:",
+        error
+      );
 
-    setError(
-      error.response?.data?.detail ||
-      "Failed to analyze experiment"
-    );
+      setAnalysis(null);
 
-  } finally {
-    setAnalysisLoading(false);
-  }
-};
+      setError(
+        error.response?.data?.detail ||
+          "Failed to analyze experiment"
+      );
+
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
 
   // ============================================================
   // RUN ANALYSIS FOR SELECTED EXPERIMENT
   // ============================================================
 
-const runAnalysis = async () => {
-  if (!selectedExperiment) {
-    alert("Please select an experiment first");
-    return;
-  }
+  const runAnalysis = async () => {
+    if (!selectedExperiment) {
+      alert(
+        "Please select an experiment first"
+      );
+      return;
+    }
 
-  setAnalysisLoading(true);
-  setError("");
-
-  try {
-    const response = await axios.get(
-      `${API_URL}/experiments/${selectedExperiment}/analysis`
+    await analyzeExperiment(
+      selectedExperiment
     );
-
-    setAnalysis(response.data);
-
-  } catch (error) {
-    console.error("Analysis error:", error);
-
-    setAnalysis(null);
-
-    setError(
-      error.response?.data?.detail ||
-      "Failed to analyze experiment"
-    );
-
-  } finally {
-    setAnalysisLoading(false);
-  }
-};
+  };
 
   // ============================================================
   // APPROVE AI ACTION
@@ -667,6 +654,7 @@ const runAnalysis = async () => {
       );
 
       await loadAiActions();
+
     } catch (err) {
       console.error(
         "Approve error:",
@@ -731,6 +719,7 @@ const runAnalysis = async () => {
       alert(
         "AI action executed successfully"
       );
+
     } catch (error) {
       console.error(
         "Execute error:",
@@ -766,6 +755,7 @@ const runAnalysis = async () => {
       );
 
       await loadAiActions();
+
     } catch (err) {
       console.error(
         "Reject error:",
@@ -778,6 +768,31 @@ const runAnalysis = async () => {
       );
     }
   };
+
+  // ============================================================
+  // ASSIGNMENT COUNTS
+  // ============================================================
+
+  const controlCount =
+    assignments.filter(
+      (assignment) =>
+        assignment.group ===
+        "CONTROL"
+    ).length;
+
+  const variantACount =
+    assignments.filter(
+      (assignment) =>
+        assignment.group ===
+        "VARIANT_A"
+    ).length;
+
+  const variantBCount =
+    assignments.filter(
+      (assignment) =>
+        assignment.group ===
+        "VARIANT_B"
+    ).length;
 
   // ============================================================
   // CHART DATA
@@ -798,6 +813,8 @@ const runAnalysis = async () => {
 
   const winner =
     analysis?.winner ||
+    runResult?.winner ||
+    experiment?.winner ||
     "N/A";
 
   const winnerRate =
@@ -833,6 +850,7 @@ const runAnalysis = async () => {
           "Arial, sans-serif"
       }}
     >
+
       <div
         style={{
           maxWidth: "1100px",
@@ -978,7 +996,7 @@ const runAnalysis = async () => {
             </h3>
 
             <h1>
-               50,000+
+              {customers.length}
             </h1>
           </div>
 
@@ -1004,7 +1022,7 @@ const runAnalysis = async () => {
         </div>
 
         {/* =====================================================
-            ERROR MESSAGE
+            ERROR
         ===================================================== */}
 
         {error && (
@@ -1022,7 +1040,7 @@ const runAnalysis = async () => {
         )}
 
         {/* =====================================================
-            SUCCESS MESSAGE
+            SUCCESS
         ===================================================== */}
 
         {message && (
@@ -1126,7 +1144,7 @@ const runAnalysis = async () => {
         </div>
 
         {/* =====================================================
-            GENERATED EXPERIMENT + LIFECYCLE
+            GENERATED EXPERIMENT
         ===================================================== */}
 
         {experiment && (
@@ -1474,8 +1492,8 @@ const runAnalysis = async () => {
 
           <p>
             Select an experiment and assign
-            your customers automatically across
-            the three experiment groups.
+            exactly 100 customers automatically
+            across the three experiment groups.
           </p>
 
           <select
@@ -1519,6 +1537,8 @@ const runAnalysis = async () => {
 
           </select>
 
+          {/* AVAILABLE CUSTOMERS */}
+
           <p>
             Customers available:{" "}
             <strong>
@@ -1531,7 +1551,8 @@ const runAnalysis = async () => {
               assignCustomers
             }
             disabled={
-              assignmentLoading
+              assignmentLoading ||
+              !selectedExperiment
             }
             style={{
               padding:
@@ -1542,8 +1563,12 @@ const runAnalysis = async () => {
           >
             {assignmentLoading
               ? "Assigning..."
-              : "👥 Assign Customers"}
+              : "👥 Assign 100 Customers"}
           </button>
+
+          {/* =================================================
+              ASSIGNMENT SUMMARY
+          ================================================= */}
 
           {assignments.length >
             0 && (
@@ -1551,35 +1576,178 @@ const runAnalysis = async () => {
             <div
               style={{
                 marginTop:
-                  "25px"
+                  "25px",
+                padding:
+                  "20px",
+                background:
+                  "#f8f9fa",
+                borderRadius:
+                  "12px"
               }}
             >
 
               <h3>
-                Assignments
+                👥 Experiment Customer Assignment
               </h3>
 
-              {assignments.map(
-                (assignment) => (
+              <div
+                style={{
+                  display:
+                    "grid",
+                  gridTemplateColumns:
+                    "repeat(4, 1fr)",
+                  gap:
+                    "15px",
+                  marginTop:
+                    "15px"
+                }}
+              >
 
-                  <p
-                    key={
-                      assignment.customer_id
-                    }
-                  >
+                <div
+                  style={{
+                    background:
+                      "white",
+                    padding:
+                      "15px",
+                    borderRadius:
+                      "10px",
+                    textAlign:
+                      "center"
+                  }}
+                >
+                  <strong>
+                    Total
+                  </strong>
 
-                    {assignment.customer_id}
+                  <h2>
+                    {assignments.length}
+                  </h2>
+                </div>
 
-                    {" → "}
+                <div
+                  style={{
+                    background:
+                      "white",
+                    padding:
+                      "15px",
+                    borderRadius:
+                      "10px",
+                    textAlign:
+                      "center"
+                  }}
+                >
+                  <strong>
+                    CONTROL
+                  </strong>
 
-                    <strong>
-                      {assignment.group}
-                    </strong>
+                  <h2>
+                    {controlCount}
+                  </h2>
+                </div>
 
-                  </p>
+                <div
+                  style={{
+                    background:
+                      "white",
+                    padding:
+                      "15px",
+                    borderRadius:
+                      "10px",
+                    textAlign:
+                      "center"
+                  }}
+                >
+                  <strong>
+                    VARIANT A
+                  </strong>
 
-                )
-              )}
+                  <h2>
+                    {variantACount}
+                  </h2>
+                </div>
+
+                <div
+                  style={{
+                    background:
+                      "white",
+                    padding:
+                      "15px",
+                    borderRadius:
+                      "10px",
+                    textAlign:
+                      "center"
+                  }}
+                >
+                  <strong>
+                    VARIANT B
+                  </strong>
+
+                  <h2>
+                    {variantBCount}
+                  </h2>
+                </div>
+
+              </div>
+
+              {/* =================================================
+                  CUSTOMER LIST
+                  ONLY SHOW MAXIMUM 100
+              ================================================= */}
+
+              <details
+                style={{
+                  marginTop:
+                    "20px"
+                }}
+              >
+
+                <summary
+                  style={{
+                    cursor:
+                      "pointer",
+                    fontWeight:
+                      "bold"
+                  }}
+                >
+                  View assigned customers
+                </summary>
+
+                <div
+                  style={{
+                    marginTop:
+                      "15px",
+                    maxHeight:
+                      "350px",
+                    overflowY:
+                      "auto"
+                  }}
+                >
+
+                  {assignments.map(
+                    (assignment) => (
+
+                      <p
+                        key={
+                          `${assignment.experiment_id}-${assignment.customer_id}`
+                        }
+                      >
+
+                        {assignment.customer_id}
+
+                        {" → "}
+
+                        <strong>
+                          {assignment.group}
+                        </strong>
+
+                      </p>
+
+                    )
+                  )}
+
+                </div>
+
+              </details>
 
             </div>
 
@@ -1588,48 +1756,112 @@ const runAnalysis = async () => {
         </div>
 
         {/* =====================================================
-            RECORD EXPERIMENT RESULTS
+            RUN EXPERIMENT
         ===================================================== */}
 
-        <div className="section">
-  <h2>⚡ Run Experiment</h2>
+        <div
+          className="section"
+          style={{
+            background:
+              "white",
+            padding:
+              "25px",
+            borderRadius:
+              "12px",
+            marginTop:
+              "25px"
+          }}
+        >
 
-  <p>
-    Run the experiment using the assigned customers
-    and automatically calculate the winning group.
-  </p>
+          <h2>
+            ⚡ Run Experiment
+          </h2>
 
-  {assignments.length === 0 ? (
-    <p>
-      Please assign customers before running the experiment.
-    </p>
-  ) : (
-    <button
-      onClick={runExperiment}
-      disabled={runLoading}
-    >
-      {runLoading
-        ? "Running Experiment..."
-        : "⚡ Run Experiment"}
-    </button>
-  )}
+          <p>
+            Run the experiment using the
+            assigned customers and automatically
+            calculate the winning group.
+          </p>
 
-  {runResult && (
-    <div className="result-card">
-      <h3>Experiment Completed</h3>
+          {assignments.length ===
+          0 ? (
 
-      <p>
-        Winner:
-        <strong> {runResult.winner}</strong>
-      </p>
+            <p>
+              Please assign customers before
+              running the experiment.
+            </p>
 
-      <p>
-        Results created:
-        <strong> {runResult.results_created}</strong>
-      </p>
-    </div>
-  )}
-</div>
+          ) : (
+
+            <button
+              onClick={
+                runExperiment
+              }
+              disabled={
+                runLoading
+              }
+              style={{
+                padding:
+                  "14px 24px",
+                fontSize:
+                  "16px",
+                cursor:
+                  "pointer"
+              }}
+            >
+              {runLoading
+                ? "⏳ Running Experiment..."
+                : "⚡ Run Experiment"}
+            </button>
+
+          )}
+
+          {runResult && (
+
+            <div
+              className="result-card"
+              style={{
+                marginTop:
+                  "20px",
+                padding:
+                  "20px",
+                background:
+                  "#f8f9fa",
+                borderRadius:
+                  "12px"
+              }}
+            >
+
+              <h3>
+                ✅ Experiment Completed
+              </h3>
+
+              <p>
+                <strong>
+                  Winner:
+                </strong>{" "}
+                {runResult.winner}
+              </p>
+
+              <p>
+                <strong>
+                  Status:
+                </strong>{" "}
+                {runResult.status}
+              </p>
+
+              <p>
+                <strong>
+                  Results Created:
+                </strong>{" "}
+                {runResult.results_created}
+              </p>
+
+            </div>
+
+          )}
+
+        </div>
 
         {/* =====================================================
             EXPERIMENT ANALYSIS
@@ -1638,6 +1870,16 @@ const runAnalysis = async () => {
         <div
           id="analysis-section"
           className="section"
+          style={{
+            background:
+              "white",
+            padding:
+              "25px",
+            borderRadius:
+              "12px",
+            marginTop:
+              "25px"
+          }}
         >
 
           <h2>
@@ -1678,6 +1920,9 @@ const runAnalysis = async () => {
                   Customers:{" "}
                   {analysis.control
                     ?.customers ??
+                    analysis.groups
+                      ?.CONTROL
+                      ?.customers ??
                     0}
                 </p>
 
@@ -1685,6 +1930,9 @@ const runAnalysis = async () => {
                   Conversions:{" "}
                   {analysis.control
                     ?.conversions ??
+                    analysis.groups
+                      ?.CONTROL
+                      ?.conversions ??
                     0}
                 </p>
 
@@ -1692,6 +1940,9 @@ const runAnalysis = async () => {
                   Conversion Rate:{" "}
                   {analysis.control
                     ?.conversion_rate ??
+                    analysis.groups
+                      ?.CONTROL
+                      ?.conversion_rate ??
                     0}
                   %
                 </p>
@@ -1710,6 +1961,9 @@ const runAnalysis = async () => {
                   Customers:{" "}
                   {analysis.variant_a
                     ?.customers ??
+                    analysis.groups
+                      ?.VARIANT_A
+                      ?.customers ??
                     0}
                 </p>
 
@@ -1717,6 +1971,9 @@ const runAnalysis = async () => {
                   Conversions:{" "}
                   {analysis.variant_a
                     ?.conversions ??
+                    analysis.groups
+                      ?.VARIANT_A
+                      ?.conversions ??
                     0}
                 </p>
 
@@ -1724,6 +1981,9 @@ const runAnalysis = async () => {
                   Conversion Rate:{" "}
                   {analysis.variant_a
                     ?.conversion_rate ??
+                    analysis.groups
+                      ?.VARIANT_A
+                      ?.conversion_rate ??
                     0}
                   %
                 </p>
@@ -1742,6 +2002,9 @@ const runAnalysis = async () => {
                   Customers:{" "}
                   {analysis.variant_b
                     ?.customers ??
+                    analysis.groups
+                      ?.VARIANT_B
+                      ?.customers ??
                     0}
                 </p>
 
@@ -1749,6 +2012,9 @@ const runAnalysis = async () => {
                   Conversions:{" "}
                   {analysis.variant_b
                     ?.conversions ??
+                    analysis.groups
+                      ?.VARIANT_B
+                      ?.conversions ??
                     0}
                 </p>
 
@@ -1756,6 +2022,9 @@ const runAnalysis = async () => {
                   Conversion Rate:{" "}
                   {analysis.variant_b
                     ?.conversion_rate ??
+                    analysis.groups
+                      ?.VARIANT_B
+                      ?.conversion_rate ??
                     0}
                   %
                 </p>
@@ -1771,7 +2040,9 @@ const runAnalysis = async () => {
                 </h2>
 
                 <h1>
-                  {analysis.winner}
+                  {analysis.winner ||
+                    runResult?.winner ||
+                    "N/A"}
                 </h1>
 
                 <p>
@@ -1947,239 +2218,237 @@ const runAnalysis = async () => {
         ===================================================== */}
 
         <div
-  id="ai-actions-section"
-  className="ai-actions-section"
->
-
-  <h2>
-    ⚡ AI Growth Actions
-  </h2>
-
-  {aiActions.length === 0 ? (
-
-    <p>
-      No AI actions available.
-    </p>
-
-  ) : (
-
-    aiActions.map(
-      (action) => (
-
-        <div
-          key={action.action_id}
-          className="ai-action-card"
+          id="ai-actions-section"
+          className="ai-actions-section"
         >
 
-          {/* ACTION TYPE */}
-          <h3>
-            {action.action_type}
-          </h3>
+          <h2>
+            ⚡ AI Growth Actions
+          </h2>
 
-
-          {/* RECOMMENDATION */}
-          <p>
-            <strong>
-              Recommendation:
-            </strong>
-          </p>
-
-          <p>
-            {action.description}
-          </p>
-
-
-          {/* REASON */}
-          <p>
-            <strong>
-              Why?
-            </strong>
-          </p>
-
-          <p>
-            {action.reason}
-          </p>
-
-
-          {/* EXPECTED IMPACT */}
-          <p>
-            <strong>
-              Expected Impact:
-            </strong>
-          </p>
-
-          <p>
-            {action.expected_impact}
-          </p>
-
-
-          {/* STATUS */}
-          <p>
-            <strong>
-              Status:
-            </strong>{" "}
-            {action.status}
-          </p>
-
-
-          {/* APPROVE / REJECT */}
-          {action.status === "PROPOSED" && (
-
-            <div>
-
-              <button
-                onClick={() =>
-                  approveAction(
-                    action.action_id
-                  )
-                }
-              >
-                ✅ Approve
-              </button>
-
-              <button
-                onClick={() =>
-                  rejectAction(
-                    action.action_id
-                  )
-                }
-              >
-                ❌ Reject
-              </button>
-
-            </div>
-
-          )}
-
-
-          {/* EXECUTE */}
-          {action.status === "APPROVED" && (
-
-            <button
-              onClick={() =>
-                executeAction(
-                  action.action_id
-                )
-              }
-            >
-              ⚡ Execute
-            </button>
-
-          )}
-
-
-          {/* EXECUTING */}
-          {action.status === "EXECUTING" && (
-
-            <button disabled>
-              ⏳ Executing...
-            </button>
-
-          )}
-
-
-          {/* EXECUTED */}
-          {action.status === "EXECUTED" && (
-
-            <div
-              className="execution-success"
-            >
-
-              <p>
-                <strong>
-                  ✅ Execution Result:
-                </strong>
-              </p>
-
-              <p>
-                {action.execution_result}
-              </p>
-
-
-              <p>
-                <strong>
-                  📈 Actual Impact:
-                </strong>
-              </p>
-
-              <p>
-                {action.actual_impact}
-              </p>
-
-
-              {action.executed_at && (
-
-                <p>
-                  <strong>
-                    Executed At:
-                  </strong>{" "}
-                  {new Date(
-                    action.executed_at
-                  ).toLocaleString()}
-                </p>
-
-              )}
-
-            </div>
-
-          )}
-
-
-          {/* FAILED */}
-          {action.status === "FAILED" && (
-
-            <div
-              className="execution-failed"
-            >
-
-              <p>
-                ❌ Execution Failed
-              </p>
-
-              {action.execution_result && (
-
-                <p>
-                  <strong>
-                    Error:
-                  </strong>{" "}
-                  {action.execution_result}
-                </p>
-
-              )}
-
-              {action.actual_impact && (
-
-                <p>
-                  <strong>
-                    Actual Impact:
-                  </strong>{" "}
-                  {action.actual_impact}
-                </p>
-
-              )}
-
-            </div>
-
-          )}
-
-
-          {/* REJECTED */}
-          {action.status === "REJECTED" && (
+          {aiActions.length ===
+          0 ? (
 
             <p>
-              ❌ This AI action was rejected.
+              No AI actions available.
             </p>
+
+          ) : (
+
+            aiActions.map(
+              (action) => (
+
+                <div
+                  key={
+                    action.action_id
+                  }
+                  className="ai-action-card"
+                >
+
+                  <h3>
+                    {action.action_type}
+                  </h3>
+
+                  <p>
+                    <strong>
+                      Recommendation:
+                    </strong>
+                  </p>
+
+                  <p>
+                    {action.description}
+                  </p>
+
+                  <p>
+                    <strong>
+                      Why?
+                    </strong>
+                  </p>
+
+                  <p>
+                    {action.reason}
+                  </p>
+
+                  <p>
+                    <strong>
+                      Expected Impact:
+                    </strong>
+                  </p>
+
+                  <p>
+                    {action.expected_impact}
+                  </p>
+
+                  <p>
+                    <strong>
+                      Status:
+                    </strong>{" "}
+                    {action.status}
+                  </p>
+
+                  {/* APPROVE / REJECT */}
+
+                  {action.status ===
+                    "PROPOSED" && (
+
+                    <div>
+
+                      <button
+                        onClick={() =>
+                          approveAction(
+                            action.action_id
+                          )
+                        }
+                      >
+                        ✅ Approve
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          rejectAction(
+                            action.action_id
+                          )
+                        }
+                      >
+                        ❌ Reject
+                      </button>
+
+                    </div>
+
+                  )}
+
+                  {/* EXECUTE */}
+
+                  {action.status ===
+                    "APPROVED" && (
+
+                    <button
+                      onClick={() =>
+                        executeAction(
+                          action.action_id
+                        )
+                      }
+                    >
+                      ⚡ Execute
+                    </button>
+
+                  )}
+
+                  {/* EXECUTING */}
+
+                  {action.status ===
+                    "EXECUTING" && (
+
+                    <button disabled>
+                      ⏳ Executing...
+                    </button>
+
+                  )}
+
+                  {/* EXECUTED */}
+
+                  {action.status ===
+                    "EXECUTED" && (
+
+                    <div
+                      className="execution-success"
+                    >
+
+                      <p>
+                        <strong>
+                          ✅ Execution Result:
+                        </strong>
+                      </p>
+
+                      <p>
+                        {action.execution_result}
+                      </p>
+
+                      <p>
+                        <strong>
+                          📈 Actual Impact:
+                        </strong>
+                      </p>
+
+                      <p>
+                        {action.actual_impact}
+                      </p>
+
+                      {action.executed_at && (
+
+                        <p>
+                          <strong>
+                            Executed At:
+                          </strong>{" "}
+                          {new Date(
+                            action.executed_at
+                          ).toLocaleString()}
+                        </p>
+
+                      )}
+
+                    </div>
+
+                  )}
+
+                  {/* FAILED */}
+
+                  {action.status ===
+                    "FAILED" && (
+
+                    <div
+                      className="execution-failed"
+                    >
+
+                      <p>
+                        ❌ Execution Failed
+                      </p>
+
+                      {action.execution_result && (
+
+                        <p>
+                          <strong>
+                            Error:
+                          </strong>{" "}
+                          {action.execution_result}
+                        </p>
+
+                      )}
+
+                      {action.actual_impact && (
+
+                        <p>
+                          <strong>
+                            Actual Impact:
+                          </strong>{" "}
+                          {action.actual_impact}
+                        </p>
+
+                      )}
+
+                    </div>
+
+                  )}
+
+                  {/* REJECTED */}
+
+                  {action.status ===
+                    "REJECTED" && (
+
+                    <p>
+                      ❌ This AI action was rejected.
+                    </p>
+
+                  )}
+
+                </div>
+
+              )
+            )
 
           )}
 
         </div>
-
-      )
-    )
-
-  )}
-
-</div>
 
         {/* =====================================================
             EXPERIMENT HISTORY
