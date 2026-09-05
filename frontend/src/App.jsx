@@ -64,20 +64,19 @@ function App() {
   // ============================================================
 
   const loadCustomers = async () => {
-    try {
-      const response = await axios.get(
-        `${API_URL}/customers/`
-      );
+  try {
+    const response = await axios.get(
+      `${API_URL}/customers/?skip=0&limit=1`
+    );
 
-      setCustomers(response.data);
-    } catch (err) {
-      console.error(
-        "Failed to load customers:",
-        err
-      );
-    }
-  };
-
+    setCustomers(response.data);
+  } catch (err) {
+    console.error(
+      "Failed to load customers:",
+      err
+    );
+  }
+};
   // ============================================================
   // LOAD AI ACTIONS
   // ============================================================
@@ -375,89 +374,59 @@ function App() {
   // ============================================================
 
   const assignCustomers = async () => {
-    if (!selectedExperiment) {
-      setError(
-        "Please select an experiment."
-      );
-      return;
-    }
+  if (!selectedExperiment) {
+    setError("Please select an experiment.");
+    return;
+  }
 
-    if (customers.length === 0) {
-      setError(
-        "No customers available."
-      );
-      return;
-    }
+  setAssignmentLoading(true);
+  setError("");
+  setMessage("");
 
-    setAssignmentLoading(true);
-    setError("");
-    setMessage("");
+  try {
+    const response = await axios.post(
+      `${API_URL}/experiment-assignments/auto/${selectedExperiment}`
+    );
 
-    try {
-      const newAssignments = customers.map(
-        (customer, index) => {
-          let group;
+    console.log(
+      "Automatic assignment:",
+      response.data
+    );
 
-          if (index % 3 === 0) {
-            group = "CONTROL";
-          } else if (index % 3 === 1) {
-            group = "VARIANT_A";
-          } else {
-            group = "VARIANT_B";
-          }
-
-          return {
-            experiment_id:
-              selectedExperiment,
-
-            customer_id:
-              customer.customer_id,
-
-            group: group
-          };
-        }
-      );
-
-      console.log(
-        "Assignments:",
-        newAssignments
-      );
-
-      for (
-        const assignment of newAssignments
-      ) {
-        await axios.post(
-          `${API_URL}/experiment-assignments/`,
-          assignment
-        );
-      }
-
-      setAssignments(
-        newAssignments
-      );
-
-      setMessage(
+    setMessage(
+      response.data.message ||
         "Customers assigned successfully!"
-      );
-    } catch (err) {
-      console.error(
-        "Assignment error:",
-        err
-      );
+    );
 
-      console.error(
-        "Backend response:",
-        err.response?.data
-      );
+    // Load the assignments created for this experiment
+    const assignmentsResponse = await axios.get(
+      `${API_URL}/experiment-assignments/${selectedExperiment}`
+    );
 
-      setError(
-        err.response?.data?.detail ||
-          "Unable to assign customers."
-      );
-    } finally {
-      setAssignmentLoading(false);
-    }
-  };
+    setAssignments(
+      assignmentsResponse.data
+    );
+
+  } catch (err) {
+    console.error(
+      "Assignment error:",
+      err
+    );
+
+    console.error(
+      "Backend response:",
+      err.response?.data
+    );
+
+    setError(
+      err.response?.data?.detail ||
+        "Unable to assign customers."
+    );
+
+  } finally {
+    setAssignmentLoading(false);
+  }
+};
 
   // ============================================================
   // PREPARE RESULTS
