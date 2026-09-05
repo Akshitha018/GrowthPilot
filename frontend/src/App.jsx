@@ -38,6 +38,9 @@ function App() {
   const [results, setResults] = useState([]);
   const [resultLoading, setResultLoading] = useState(false);
 
+  const [runLoading, setRunLoading] = useState(false);
+  const [runResult, setRunResult] = useState(null);
+
   const [aiActions, setAiActions] = useState([]);
 
   // ============================================================
@@ -66,7 +69,7 @@ function App() {
   const loadCustomers = async () => {
   try {
     const response = await axios.get(
-      `${API_URL}/customers/?skip=0&limit=1`
+      `${API_URL}/customers/?skip=0&limit=100`
     );
 
     setCustomers(response.data);
@@ -356,6 +359,12 @@ function App() {
       setExperiment(
         response.data
       );
+      setSelectedExperiment(experimentId);
+      const assignmentsResponse = await axios.get(
+  `${API_URL}/experiment-assignments/${experimentId}`
+);
+
+setAssignments(assignmentsResponse.data);
     } catch (err) {
       console.error(
         "Failed to load selected experiment:",
@@ -428,6 +437,60 @@ function App() {
   }
 };
 
+const runExperiment = async () => {
+  if (!selectedExperiment) {
+    setError("Please select an experiment.");
+    return;
+  }
+
+  if (assignments.length === 0) {
+    setError("Please assign customers first.");
+    return;
+  }
+
+  setRunLoading(true);
+  setError("");
+  setMessage("");
+  setRunResult(null);
+
+  try {
+    const response = await axios.post(
+      `${API_URL}/experiments/${selectedExperiment}/run`
+    );
+
+    console.log("Run experiment response:", response.data);
+
+    setRunResult(response.data);
+
+    setMessage(
+      `Experiment completed successfully! Winner: ${response.data.winner}`
+    );
+
+    setExperiment((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: response.data.status,
+            winner: response.data.winner
+          }
+        : prev
+    );
+
+    await loadExperiments();
+
+  } catch (err) {
+    console.error("Run experiment error:", err);
+    console.error("Backend response:", err.response?.data);
+
+    setError(
+      err.response?.data?.detail ||
+      "Unable to run experiment."
+    );
+
+  } finally {
+    setRunLoading(false);
+  }
+};
   // ============================================================
   // PREPARE RESULTS
   // ============================================================
@@ -915,7 +978,7 @@ const runAnalysis = async () => {
             </h3>
 
             <h1>
-              {customers.length}
+               50,000+
             </h1>
           </div>
 
@@ -1529,121 +1592,44 @@ const runAnalysis = async () => {
         ===================================================== */}
 
         <div className="section">
+  <h2>⚡ Run Experiment</h2>
 
-          <h2>
-            📊 Record Experiment Results
-          </h2>
+  <p>
+    Run the experiment using the assigned customers
+    and automatically calculate the winning group.
+  </p>
 
-          {assignments.length ===
-          0 ? (
+  {assignments.length === 0 ? (
+    <p>
+      Please assign customers before running the experiment.
+    </p>
+  ) : (
+    <button
+      onClick={runExperiment}
+      disabled={runLoading}
+    >
+      {runLoading
+        ? "Running Experiment..."
+        : "⚡ Run Experiment"}
+    </button>
+  )}
 
-            <p>
-              Assign customers first before
-              recording results.
-            </p>
+  {runResult && (
+    <div className="result-card">
+      <h3>Experiment Completed</h3>
 
-          ) : (
+      <p>
+        Winner:
+        <strong> {runResult.winner}</strong>
+      </p>
 
-            <>
-
-              <button
-                onClick={
-                  prepareResults
-                }
-              >
-                Prepare Results
-              </button>
-
-              {results.length >
-                0 && (
-
-                <div className="results-container">
-
-                  {results.map(
-                    (
-                      result,
-                      index
-                    ) => (
-
-                      <div
-                        className="result-row"
-                        key={
-                          result.customer_id
-                        }
-                      >
-
-                        <strong>
-                          {
-                            result.customer_id
-                          }
-                        </strong>
-
-                        <span>
-                          {
-                            result.group
-                          }
-                        </span>
-
-                        <select
-                          value={
-                            result.value
-                          }
-                          onChange={(e) => {
-
-                            const updatedResults =
-                              [...results];
-
-                            updatedResults[
-                              index
-                            ].value =
-                              Number(
-                                e.target.value
-                              );
-
-                            setResults(
-                              updatedResults
-                            );
-
-                          }}
-                        >
-
-                          <option value={0}>
-                            Not Converted
-                          </option>
-
-                          <option value={1}>
-                            Converted
-                          </option>
-
-                        </select>
-
-                      </div>
-
-                    )
-                  )}
-
-                  <button
-                    onClick={
-                      saveResults
-                    }
-                    disabled={
-                      resultLoading
-                    }
-                  >
-                    {resultLoading
-                      ? "Saving..."
-                      : "💾 Save Results"}
-                  </button>
-
-                </div>
-
-              )}
-
-            </>
-
-          )}
-
-        </div>
+      <p>
+        Results created:
+        <strong> {runResult.results_created}</strong>
+      </p>
+    </div>
+  )}
+</div>
 
         {/* =====================================================
             EXPERIMENT ANALYSIS
