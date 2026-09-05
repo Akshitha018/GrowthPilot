@@ -1454,3 +1454,142 @@ def get_ai_recommendation(
         "ai_recommendation": recommendation,
         "ai_action": ai_action
     }
+@router.post("/{experiment_id}/run")
+def run_experiment(
+    experiment_id: str,
+    db: Session = Depends(get_db)
+):
+    # ---------------------------------------------------------
+    # 1. Check experiment
+    # ---------------------------------------------------------
+    experiment = db.query(Experiment).filter(
+        Experiment.experiment_id == experiment_id
+    ).first()
+
+    if not experiment:
+        raise HTTPException(
+            status_code=404,
+            detail="Experiment not found"
+        )
+
+    # ---------------------------------------------------------
+    # 2. Get assignments
+    # ---------------------------------------------------------
+    assignments = db.query(ExperimentAssignment).filter(
+        ExperimentAssignment.experiment_id == experiment_id
+    ).all()
+
+    if not assignments:
+        raise HTTPException(
+            status_code=404,
+            detail="No customers assigned to this experiment"
+        )
+
+    # ---------------------------------------------------------
+    # 3. Generate conversion results
+    # ---------------------------------------------------------
+    results_created = 0
+
+    for assignment in assignments:
+
+        existing_result = db.query(ExperimentResult).filter(
+            ExperimentResult.experiment_id == experiment_id,
+            ExperimentResult.customer_id == assignment.customer_id,
+            ExperimentResult.metric == "conversion"
+        ).first()
+
+        if existing_result:
+            continue
+
+        transaction = db.query(Transaction).filter(
+            Transaction.customer_id == assignment.customer_id
+        ).first()
+
+        conversion_value = 1 if transaction else 0
+
+        result = ExperimentResult(
+            result_id=str(uuid4()),
+            experiment_id=experiment_id,
+            customer_id=assignment.customer_id,
+            metric="conversion",
+            value=conversion_value,
+            created_at=datetime.utcnow()
+        )
+
+        db.add(result)
+        results_created += 1
+
+    db.commit()
+
+    # ---------------------------------------------------------
+    # 4. Calculate conversion rates
+    # ---------------------------------------------------------
+    groups = ["CONTROL", "VARIANT_A", "VARIANT_B"]
+
+    analysis = {}
+
+    for group in groups:
+
+        group_assignments = [
+            a for a in assignments
+            if a.group == group
+        ]
+
+        total = len(group_assignments)
+
+        if total == 0:
+            analysis[group] = {
+                "customers": 0,
+                "conversions": 0,
+                "conversion_rate": 0
+            }
+            continue
+
+        customer_ids = [
+            a.customer_id
+            for a in group_assignments
+        ]
+
+        conversions = db.query(ExperimentResult).filter(
+            ExperimentResult.experiment_id == experiment_id,
+            ExperimentResult.metric == "conversion",
+            ExperimentResult.customer_id.in_(customer_ids),
+            ExperimentResult.value == 1
+        ).count()
+
+        conversion_rate = conversions / total
+
+        analysis[group] = {
+            "customers": total,
+            "conversions": conversions,
+            "conversion_rate": conversion_rate
+        }
+
+    # ---------------------------------------------------------
+    # 5. Select winner
+    # ---------------------------------------------------------
+    winner = max(
+        analysis,
+        key=lambda group: analysis[group]["conversion_rate"]
+    )
+
+    # ---------------------------------------------------------
+    # 6. Update experiment
+    # ---------------------------------------------------------
+    experiment.status = "WINNER_SELECTED"
+    experiment.winner = winner
+
+    db.commit()
+    db.refresh(experiment)
+
+    # ---------------------------------------------------------
+    # 7. Return complete result
+    # ---------------------------------------------------------
+    return {
+        "message": "Experiment completed successfully",
+        "experiment_id": experiment_id,
+        "status": experiment.status,
+        "winner": winner,
+        "results_created": results_created,
+        "analysis": analysis
+    }
