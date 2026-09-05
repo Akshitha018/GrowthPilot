@@ -1473,3 +1473,96 @@ def get_ai_recommendation(
         "ai_recommendation": recommendation,
         "ai_action": ai_action
     }
+# ============================================================
+# GENERATE EXPERIMENT RESULTS FROM TRANSACTIONS
+# ============================================================
+
+from app.models.transaction import Transaction
+
+
+@router.post("/{experiment_id}/generate-results")
+def generate_experiment_results(
+    experiment_id: str,
+    db: Session = Depends(get_db)
+):
+
+    # Check experiment
+    experiment = db.query(Experiment).filter(
+        Experiment.experiment_id == experiment_id
+    ).first()
+
+    if not experiment:
+        raise HTTPException(
+            status_code=404,
+            detail="Experiment not found"
+        )
+
+    # Get assignments
+    assignments = db.query(
+        ExperimentAssignment
+    ).filter(
+        ExperimentAssignment.experiment_id == experiment_id
+    ).all()
+
+    if not assignments:
+        raise HTTPException(
+            status_code=404,
+            detail="No customers assigned to this experiment"
+        )
+
+    created_results = 0
+
+    for assignment in assignments:
+
+        # Check whether this customer made a transaction
+        transaction = db.query(
+            Transaction
+        ).filter(
+            Transaction.customer_id ==
+            assignment.customer_id
+        ).first()
+
+        # Customer converted if they have a transaction
+        conversion_value = 1 if transaction else 0
+
+        # Avoid duplicate conversion result
+        existing_result = db.query(
+            ExperimentResult
+        ).filter(
+            ExperimentResult.experiment_id == experiment_id,
+            ExperimentResult.customer_id == assignment.customer_id,
+            ExperimentResult.metric == "conversion"
+        ).first()
+
+        if existing_result:
+            continue
+
+        result = ExperimentResult(
+            result_id=str(uuid4()),
+            experiment_id=experiment_id,
+            customer_id=assignment.customer_id,
+            metric="conversion",
+            value=conversion_value,
+            created_at=datetime.utcnow()
+        )
+
+        db.add(result)
+        created_results += 1
+
+    try:
+        db.commit()
+
+    except Exception as e:
+
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate results: {str(e)}"
+        )
+
+    return {
+        "message": "Experiment results generated successfully",
+        "experiment_id": experiment_id,
+        "results_created": created_results
+    }
