@@ -9,6 +9,14 @@ from sqlalchemy import text
 
 from app.database import engine
 
+from app.database import Base
+
+from app.models import customer
+from app.models import product
+from app.models import transaction
+from app.models import experiment
+from app.models import ai_action
+
 from app.routers.customers import router as customers_router
 from app.routers.products import router as products_router
 from app.routers.transactions import router as transactions_router
@@ -29,7 +37,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# ============================================================
+# CREATE DATABASE TABLES
+# ============================================================
 
+Base.metadata.create_all(bind=engine)
 
 # ============================================================
 # CORS
